@@ -12,6 +12,9 @@ import de.hysky.skyblocker.config.SkyblockerConfigManager;
 import de.hysky.skyblocker.mixins.accessors.AbstractContainerScreenAccessor;
 import de.hysky.skyblocker.mixins.accessors.HudAccessor;
 import de.hysky.skyblocker.skyblock.events.EventNotifications;
+import de.hysky.skyblocker.skyblock.dungeon.secrets.DungeonManager;
+import de.hysky.skyblocker.skyblock.dungeon.secrets.Room;
+import de.hysky.skyblocker.skyblock.dungeon.secrets.RoomSkeletonExporter;
 import de.hysky.skyblocker.utils.Constants;
 import de.hysky.skyblocker.utils.ItemUtils;
 import de.hysky.skyblocker.utils.RegistryUtils;
@@ -45,7 +48,9 @@ import net.minecraft.world.level.storage.TagValueOutput;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
@@ -80,6 +85,7 @@ public class Debug {
 		dumpHoveredItemKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.skyblocker.debug.dumpHoveredItem", InputConstants.KEY_U, SkyblockerMod.KEYBINDING_CATEGORY));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, _) -> dispatcher.register(
 				literal(SkyblockerMod.NAMESPACE).then(literal("debug")
+						.then(exportRoomCommand())
 						.then(dumpPlayersCommand())
 						.then(ItemUtils.dumpHeldItemCommand())
 						.then(ItemUtils.dumpHeldItemNetworthCalculationsCommand())
@@ -126,6 +132,33 @@ public class Debug {
 					}
 				}
 			});
+		});
+	}
+
+	private static LiteralArgumentBuilder<FabricClientCommandSource> exportRoomCommand() {
+		return literal("exportRoom").executes(context -> {
+			Room currentRoom = DungeonManager.getCurrentRoom();
+			if (currentRoom == null) {
+				context.getSource().sendError(Constants.PREFIX.get().append("§cCurrent room is null."));
+				return Command.SINGLE_SUCCESS;
+			}
+
+			try {
+				int[] blocks = RoomSkeletonExporter.collectBlocks(context.getSource().getLevel(), currentRoom);
+				var outputPath = RoomSkeletonExporter.createOutputPath(FabricLoader.getInstance().getGameDir().resolve("exported-rooms"));
+				CompletableFuture.runAsync(() -> {
+					try {
+						RoomSkeletonExporter.write(outputPath, blocks);
+					} catch (IOException e) {
+						LOGGER.error("Failed to export room skeleton to {}", outputPath, e);
+					}
+				}, SkyblockerMod.VIRTUAL_THREAD_EXECUTOR);
+				context.getSource().sendFeedback(Constants.PREFIX.get().append("§aExporting room skeleton to " + outputPath.toAbsolutePath()));
+			} catch (IOException | IllegalStateException e) {
+				context.getSource().sendError(Constants.PREFIX.get().append("§cFailed to export room skeleton: " + e.getMessage()));
+			}
+
+			return Command.SINGLE_SUCCESS;
 		});
 	}
 

@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.AABB;
@@ -30,7 +31,7 @@ public class TicTacToe extends DungeonPuzzle {
 	private static @Nullable AABB nextBestMoveToMake = null;
 
 	private TicTacToe() {
-		super("tic-tac-toe", "tic-tac-toe-1");
+		super("tic-tac-toe", "tic-tac-toe-1", "tic-tac-toe2-1");
 	}
 
 	@Init
@@ -50,8 +51,15 @@ public class TicTacToe extends DungeonPuzzle {
 		//Search within 21 blocks for item frames that contain maps
 		AABB searchBox = new AABB(client.player.getX() - 21, client.player.getY() - 21, client.player.getZ() - 21, client.player.getX() + 21, client.player.getY() + 21, client.player.getZ() + 21);
 		List<ItemFrame> itemFramesThatHoldMaps = client.level.getEntitiesOfClass(ItemFrame.class, searchBox, ItemFrame::hasFramedMap);
+		int middleColumnZ = "tic-tac-toe2-1".equals(DungeonManager.getCurrentRoom().getName()) ? 8 : 16;
 
 		try {
+			for (ItemFrame itemFrame : itemFramesThatHoldMaps) {
+				//noinspection DataFlowIssue - the room must not be null and must be matched
+				BlockPos relative = DungeonManager.getCurrentRoom().actualToRelative(itemFrame.blockPosition());
+				System.out.println(String.format("[Skyblocker Tic Tac Toe Debug] Item frame Z: world=%d, relative=%d", itemFrame.blockPosition().getZ(), relative.getZ()));
+			}
+
 			//Only attempt to solve if the puzzle wasn't just completed and if its the player's turn
 			//The low bit will always be set to 1 on odd numbers
 			if (itemFramesThatHoldMaps.size() != 9 && (itemFramesThatHoldMaps.size() & 1) == 1) {
@@ -75,15 +83,10 @@ public class TicTacToe extends DungeonPuzzle {
 						default -> -1;
 					};
 
-					//Determine the column - 17 = first, 16 = second, 15 = third
+					//Determine the column from the middle board column
 					int z = relative.getZ();
-					int column = switch (z) {
-						case 17 -> 0;
-						case 16 -> 1;
-						case 15 -> 2;
-
-						default -> -1;
-					};
+					int column = middleColumnZ - z + 1;
+					if (column < 0 || column > 2) column = -1;
 
 					if (row == -1 || column == -1) continue;
 
@@ -101,7 +104,7 @@ public class TicTacToe extends DungeonPuzzle {
 
 				double nextX = 8;
 				double nextY = 72 - bestMove.row();
-				double nextZ = 17 - bestMove.column();
+				double nextZ = middleColumnZ + 1 - bestMove.column();
 
 				//noinspection DataFlowIssue - same as above, room is not null and matched
 				BlockPos nextPos = DungeonManager.getCurrentRoom().relativeToActual(BlockPos.containing(nextX, nextY, nextZ));
